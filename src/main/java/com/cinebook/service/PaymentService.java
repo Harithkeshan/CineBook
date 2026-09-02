@@ -25,17 +25,20 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final BookingRepository bookingRepository;
     private final PaymentProvider paymentProvider;
+    private final TicketService ticketService;
     private final String defaultCurrency;
 
     public PaymentService(
             PaymentRepository paymentRepository,
             BookingRepository bookingRepository,
             PaymentProvider paymentProvider,
+            TicketService ticketService,
             @Value("${cinebook.payment.currency:LKR}") String defaultCurrency
     ) {
         this.paymentRepository = paymentRepository;
         this.bookingRepository = bookingRepository;
         this.paymentProvider = paymentProvider;
+        this.ticketService = ticketService;
         this.defaultCurrency = defaultCurrency;
     }
 
@@ -117,6 +120,8 @@ public class PaymentService {
             booking.setStatus(BookingStatus.CONFIRMED);
             paymentRepository.save(payment);
             bookingRepository.save(booking);
+
+            ticketService.generateTicketsForBooking(booking);
         } else {
             payment.setStatus(PaymentStatus.FAILED);
             paymentRepository.save(payment);

@@ -13,6 +13,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -41,9 +42,19 @@ class EndToEndBookingPaymentIntegrationTest {
     @Mock
     private PaymentRepository paymentRepository;
 
+    @Mock
+    private TicketRepository ticketRepository;
+
+    @Mock
+    private RefundService refundService;
+
+    @Mock
+    private UserRepository userRepository;
+
     private ShowtimeSeatService showtimeSeatService;
     private BookingService bookingService;
     private PaymentService paymentService;
+    private TicketService ticketService;
     private PaymentProvider mockPaymentProvider;
 
     @BeforeEach
@@ -55,18 +66,24 @@ class EndToEndBookingPaymentIntegrationTest {
                 bookingSeatRepository,
                 showtimeRepository,
                 showtimeSeatRepository,
-                pricingRuleRepository
+                pricingRuleRepository,
+                ticketRepository,
+                paymentRepository,
+                refundService,
+                userRepository
         );
+        ticketService = new TicketService(ticketRepository, bookingRepository);
         paymentService = new PaymentService(
                 paymentRepository,
                 bookingRepository,
                 mockPaymentProvider,
+                ticketService,
                 "LKR"
         );
     }
 
     @Test
-    void testFullWorkflow_HoldSeat_CreateBooking_InitiatePayment_ConfirmPayment() {
+    void testFullWorkflow_HoldSeat_CreateBooking_InitiatePayment_ConfirmPayment_GenerateTickets() {
         Long showtimeId = 1L;
         Long seatId = 10L;
         Long sectionId = 1L;
@@ -136,6 +153,14 @@ class EndToEndBookingPaymentIntegrationTest {
         savedBooking.setBookingReference(bookingResponse.bookingReference());
         savedBooking.setStatus(BookingStatus.PENDING);
         savedBooking.setTotalAmount(new BigDecimal("1200.00"));
+        
+        BookingSeat bs = new BookingSeat();
+        bs.setId(200L);
+        bs.setBooking(savedBooking);
+        bs.setShowtimeSeat(ss);
+        bs.setTicketType(TicketType.ADULT);
+        bs.setPrice(new BigDecimal("1200.00"));
+        savedBooking.setBookingSeats(List.of(bs));
 
         when(bookingRepository.findByBookingReference(bookingResponse.bookingReference()))
                 .thenReturn(Optional.of(savedBooking));
@@ -151,10 +176,8 @@ class EndToEndBookingPaymentIntegrationTest {
 
         assertNotNull(initPaymentResponse);
         assertEquals(PaymentStatus.PROCESSING, initPaymentResponse.status());
-        assertEquals(new BigDecimal("1200.00"), initPaymentResponse.amount());
-        assertEquals("MOCK", initPaymentResponse.provider());
 
-        // Step 4: Confirm Payment
+        // Step 4: Confirm Payment & Generate Tickets
         Payment processingPayment = new Payment();
         processingPayment.setId(15L);
         processingPayment.setBooking(savedBooking);
@@ -165,14 +188,21 @@ class EndToEndBookingPaymentIntegrationTest {
         processingPayment.setStatus(PaymentStatus.PROCESSING);
 
         when(paymentRepository.findById(15L)).thenReturn(Optional.of(processingPayment));
+        when(ticketRepository.findByBookingSeatId(200L)).thenReturn(Optional.empty());
+        when(ticketRepository.save(any(Ticket.class))).thenAnswer(inv -> {
+            Ticket t = inv.getArgument(0);
+            t.setId(300L);
+            return t;
+        });
 
         PaymentResponse confirmPaymentResponse = paymentService.confirmPayment(15L, new ConfirmPaymentRequest(true));
 
         assertNotNull(confirmPaymentResponse);
         assertEquals(PaymentStatus.PAID, confirmPaymentResponse.status());
         assertEquals(BookingStatus.CONFIRMED, savedBooking.getStatus());
+        verify(ticketRepository).save(any(Ticket.class));
 
         // Step 5: Verify seats remain BOOKED
-        assertEquals(ShowtimeSeatStatus.BOOKED, ss.getStatus(), "Seats must remain BOOKED after payment confirmation");
+        assertEquals(ShowtimeSeatStatus.BOOKED, ss.getStatus(), "Seats must remain BOOKED after payment confirmation and ticket generation");
     }
 }

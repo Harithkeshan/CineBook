@@ -9,4 +9,7 @@ import java.util.List;
 @Repository
 public interface SeatRepository extends JpaRepository<Seat, Long> {
     List<Seat> findBySectionId(Long sectionId);
+    boolean existsBySectionIdAndRowLabelAndSeatNumber(Long sectionId, String rowLabel, String seatNumber);
+    List<Seat> findBySectionHallIdAndIsActiveTrue(Long hallId);
+    boolean existsBySectionId(Long sectionId);
 }

@@ -15,6 +15,8 @@ import java.util.Optional;
 public interface ShowtimeSeatRepository extends JpaRepository<ShowtimeSeat, Long> {
     List<ShowtimeSeat> findByShowtimeId(Long showtimeId);
     Optional<ShowtimeSeat> findByShowtimeIdAndSeatId(Long showtimeId, Long seatId);
+    boolean existsBySeatId(Long seatId);
+    boolean existsByShowtimeId(Long showtimeId);
 
     @Query("SELECT ss FROM ShowtimeSeat ss " +
            "JOIN FETCH ss.seat s " +

@@ -9,4 +9,5 @@ import java.util.List;
 @Repository
 public interface SectionRepository extends JpaRepository<Section, Long> {
     List<Section> findByHallId(Long hallId);
+    boolean existsByHallId(Long hallId);
 }

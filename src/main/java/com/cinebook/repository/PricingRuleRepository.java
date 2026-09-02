@@ -12,4 +12,6 @@ import java.util.Optional;
 public interface PricingRuleRepository extends JpaRepository<PricingRule, Long> {
     List<PricingRule> findByShowtimeId(Long showtimeId);
     Optional<PricingRule> findByShowtimeIdAndSectionIdAndTicketType(Long showtimeId, Long sectionId, TicketType ticketType);
+    boolean existsByShowtimeIdAndSectionIdAndTicketType(Long showtimeId, Long sectionId, TicketType ticketType);
+    boolean existsBySectionId(Long sectionId);
 }

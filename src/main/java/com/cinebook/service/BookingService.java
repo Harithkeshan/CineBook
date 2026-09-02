@@ -1,24 +1,38 @@
 package com.cinebook.service;
 
+import com.cinebook.dto.BookingDetailsResponse;
 import com.cinebook.dto.BookingRequest;
 import com.cinebook.dto.BookingResponse;
 import com.cinebook.dto.BookingSeatRequest;
 import com.cinebook.dto.BookingSeatResponse;
+import com.cinebook.dto.BookingSummaryResponse;
+import com.cinebook.dto.CancelBookingResponse;
+import com.cinebook.dto.RefundResponse;
 import com.cinebook.entity.Booking;
 import com.cinebook.entity.BookingSeat;
+import com.cinebook.entity.Hall;
+import com.cinebook.entity.Location;
+import com.cinebook.entity.Movie;
+import com.cinebook.entity.Payment;
 import com.cinebook.entity.PricingRule;
 import com.cinebook.entity.Showtime;
 import com.cinebook.entity.ShowtimeSeat;
+import com.cinebook.entity.Ticket;
 import com.cinebook.entity.enums.BookingStatus;
+import com.cinebook.entity.enums.PaymentStatus;
 import com.cinebook.entity.enums.ShowtimeSeatStatus;
 import com.cinebook.entity.enums.ShowtimeStatus;
+import com.cinebook.entity.enums.TicketStatus;
 import com.cinebook.exception.ResourceNotFoundException;
 import com.cinebook.exception.SeatUnavailableException;
 import com.cinebook.repository.BookingRepository;
 import com.cinebook.repository.BookingSeatRepository;
+import com.cinebook.repository.PaymentRepository;
 import com.cinebook.repository.PricingRuleRepository;
 import com.cinebook.repository.ShowtimeRepository;
 import com.cinebook.repository.ShowtimeSeatRepository;
+import com.cinebook.repository.TicketRepository;
+import com.cinebook.repository.UserRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -30,6 +44,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.regex.Pattern;
@@ -45,19 +60,31 @@ public class BookingService {
     private final ShowtimeRepository showtimeRepository;
     private final ShowtimeSeatRepository showtimeSeatRepository;
     private final PricingRuleRepository pricingRuleRepository;
+    private final TicketRepository ticketRepository;
+    private final PaymentRepository paymentRepository;
+    private final RefundService refundService;
+    private final UserRepository userRepository;
 
     public BookingService(
             BookingRepository bookingRepository,
             BookingSeatRepository bookingSeatRepository,
             ShowtimeRepository showtimeRepository,
             ShowtimeSeatRepository showtimeSeatRepository,
-            PricingRuleRepository pricingRuleRepository
+            PricingRuleRepository pricingRuleRepository,
+            TicketRepository ticketRepository,
+            PaymentRepository paymentRepository,
+            RefundService refundService,
+            UserRepository userRepository
     ) {
         this.bookingRepository = bookingRepository;
         this.bookingSeatRepository = bookingSeatRepository;
         this.showtimeRepository = showtimeRepository;
         this.showtimeSeatRepository = showtimeSeatRepository;
         this.pricingRuleRepository = pricingRuleRepository;
+        this.ticketRepository = ticketRepository;
+        this.paymentRepository = paymentRepository;
+        this.refundService = refundService;
+        this.userRepository = userRepository;
     }
 
     public Booking getBookingById(Long id) {
@@ -80,6 +107,139 @@ public class BookingService {
 
     public List<Booking> getBookingsByShowtimeId(Long showtimeId) {
         return bookingRepository.findByShowtimeId(showtimeId);
+    }
+
+    public BookingDetailsResponse getBookingDetailsByReference(String bookingReference) {
+        Booking booking = getBookingByReference(bookingReference);
+
+        Showtime showtime = booking.getShowtime();
+        Movie movie = showtime != null ? showtime.getMovie() : null;
+        Hall hall = showtime != null ? showtime.getHall() : null;
+        Location location = hall != null ? hall.getLocation() : null;
+
+        BookingDetailsResponse.MovieSummary movieSummary = movie != null
+                ? new BookingDetailsResponse.MovieSummary(
+                movie.getId(),
+                movie.getTitle(),
+                movie.getDurationMinutes(),
+                movie.getLanguage(),
+                movie.getGenre(),
+                movie.getPosterUrl(),
+                movie.getAgeRating()
+        )
+                : null;
+
+        BookingDetailsResponse.ShowtimeSummary showtimeSummary = showtime != null
+                ? new BookingDetailsResponse.ShowtimeSummary(
+                showtime.getId(),
+                showtime.getStartTime(),
+                showtime.getEndTime(),
+                showtime.getStatus()
+        )
+                : null;
+
+        BookingDetailsResponse.LocationSummary locationSummary = location != null
+                ? new BookingDetailsResponse.LocationSummary(
+                location.getId(),
+                location.getName(),
+                location.getCity()
+        )
+                : null;
+
+        BookingDetailsResponse.HallSummary hallSummary = hall != null
+                ? new BookingDetailsResponse.HallSummary(
+                hall.getId(),
+                hall.getName()
+        )
+                : null;
+
+        List<BookingDetailsResponse.BookingDetailSeatResponse> seatResponses = new ArrayList<>();
+        if (booking.getBookingSeats() != null) {
+            for (BookingSeat bs : booking.getBookingSeats()) {
+                ShowtimeSeat ss = bs.getShowtimeSeat();
+                seatResponses.add(new BookingDetailsResponse.BookingDetailSeatResponse(
+                        ss != null && ss.getSeat() != null ? ss.getSeat().getId() : null,
+                        ss != null && ss.getSeat() != null && ss.getSeat().getSection() != null ? ss.getSeat().getSection().getName() : null,
+                        ss != null && ss.getSeat() != null ? ss.getSeat().getRowLabel() : null,
+                        ss != null && ss.getSeat() != null ? ss.getSeat().getSeatNumber() : null,
+                        bs.getTicketType(),
+                        bs.getPrice()
+                ));
+            }
+        }
+
+        List<BookingDetailsResponse.BookingDetailTicketResponse> ticketResponses = new ArrayList<>();
+        if (booking.getBookingSeats() != null) {
+            for (BookingSeat bs : booking.getBookingSeats()) {
+                Optional<Ticket> ticketOpt = ticketRepository.findByBookingSeatId(bs.getId());
+                if (ticketOpt.isPresent()) {
+                    Ticket t = ticketOpt.get();
+                    ticketResponses.add(new BookingDetailsResponse.BookingDetailTicketResponse(
+                            t.getTicketNumber(),
+                            t.getStatus(),
+                            t.getIssuedAt(),
+                            t.getUsedAt()
+                    ));
+                }
+            }
+        }
+
+        List<Payment> payments = paymentRepository.findByBookingId(booking.getId());
+        BookingDetailsResponse.PaymentSummary paymentSummary = null;
+        if (!payments.isEmpty()) {
+            Payment p = payments.stream()
+                    .filter(pay -> pay.getStatus() == PaymentStatus.PAID || pay.getStatus() == PaymentStatus.REFUNDED)
+                    .findFirst()
+                    .orElse(payments.get(payments.size() - 1));
+
+            paymentSummary = new BookingDetailsResponse.PaymentSummary(
+                    p.getId(),
+                    p.getStatus(),
+                    p.getAmount(),
+                    p.getCurrency(),
+                    p.getProvider() != null ? p.getProvider() : "MOCK",
+                    p.getCreatedAt()
+            );
+        }
+
+        List<RefundResponse> refunds = refundService.getRefundsByBookingReference(bookingReference);
+
+        return new BookingDetailsResponse(
+                booking.getBookingReference(),
+                booking.getStatus(),
+                booking.getCustomerName(),
+                booking.getCustomerEmail(),
+                booking.getCustomerPhone(),
+                booking.getTotalAmount(),
+                booking.getCreatedAt(),
+                movieSummary,
+                showtimeSummary,
+                locationSummary,
+                hallSummary,
+                seatResponses,
+                ticketResponses,
+                paymentSummary,
+                refunds
+        );
+    }
+
+    public Page<BookingSummaryResponse> getUserBookingHistory(Long userId, Pageable pageable) {
+        if (!userRepository.existsById(userId)) {
+            throw new ResourceNotFoundException("User not found with id: " + userId);
+        }
+
+        Page<Booking> page = bookingRepository.findByUserId(userId, pageable);
+
+        return page.map(b -> new BookingSummaryResponse(
+                b.getBookingReference(),
+                b.getShowtime() != null && b.getShowtime().getMovie() != null ? b.getShowtime().getMovie().getTitle() : null,
+                b.getShowtime() != null ? b.getShowtime().getStartTime() : null,
+                b.getShowtime() != null && b.getShowtime().getHall() != null && b.getShowtime().getHall().getLocation() != null ? b.getShowtime().getHall().getLocation().getName() : null,
+                b.getShowtime() != null && b.getShowtime().getHall() != null ? b.getShowtime().getHall().getName() : null,
+                b.getStatus(),
+                b.getTotalAmount(),
+                b.getCreatedAt()
+        ));
     }
 
     @Transactional
@@ -191,6 +351,56 @@ public class BookingService {
                 booking.getTotalAmount(),
                 booking.getCreatedAt(),
                 seatResponses
+        );
+    }
+
+    @Transactional
+    public CancelBookingResponse cancelBookingByCustomer(String bookingReference) {
+        Booking booking = bookingRepository.findByBookingReference(bookingReference)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking not found with reference: " + bookingReference));
+
+        if (booking.getStatus() == BookingStatus.CANCELLED) {
+            throw new IllegalStateException("Booking is already cancelled");
+        }
+        if (booking.getStatus() == BookingStatus.EXPIRED) {
+            throw new IllegalStateException("Cannot cancel an expired booking");
+        }
+        if (booking.getStatus() == BookingStatus.COMPLETED) {
+            throw new IllegalStateException("Cannot cancel a completed booking");
+        }
+        if (booking.getStatus() != BookingStatus.PENDING && booking.getStatus() != BookingStatus.CONFIRMED) {
+            throw new IllegalStateException("Cannot cancel booking with status: " + booking.getStatus());
+        }
+
+        List<BookingSeat> bookingSeats = booking.getBookingSeats();
+        if (bookingSeats != null) {
+            for (BookingSeat bs : bookingSeats) {
+                ShowtimeSeat ss = bs.getShowtimeSeat();
+                if (ss != null && (ss.getStatus() == ShowtimeSeatStatus.BOOKED || ss.getStatus() == ShowtimeSeatStatus.HELD)) {
+                    ss.setStatus(ShowtimeSeatStatus.AVAILABLE);
+                    ss.setHoldExpiresAt(null);
+                    showtimeSeatRepository.save(ss);
+                }
+
+                Optional<Ticket> ticketOpt = ticketRepository.findByBookingSeatId(bs.getId());
+                if (ticketOpt.isPresent()) {
+                    Ticket ticket = ticketOpt.get();
+                    if (ticket.getStatus() == TicketStatus.ACTIVE) {
+                        ticket.setStatus(TicketStatus.CANCELLED);
+                        ticketRepository.save(ticket);
+                    }
+                }
+            }
+        }
+
+        booking.setStatus(BookingStatus.CANCELLED);
+        bookingRepository.save(booking);
+
+        return new CancelBookingResponse(
+                booking.getBookingReference(),
+                BookingStatus.CANCELLED,
+                false,
+                "Booking cancelled. No refund is available for customer-initiated cancellation."
         );
     }
 

@@ -39,6 +39,9 @@ class PaymentServiceTest {
     @Mock
     private PaymentProvider paymentProvider;
 
+    @Mock
+    private TicketService ticketService;
+
     private PaymentService paymentService;
 
     @BeforeEach
@@ -47,6 +50,7 @@ class PaymentServiceTest {
                 paymentRepository,
                 bookingRepository,
                 paymentProvider,
+                ticketService,
                 "LKR"
         );
     }
@@ -114,7 +118,7 @@ class PaymentServiceTest {
     }
 
     @Test
-    void test3_SuccessfulPaymentConfirmationUpdatesStatuses() {
+    void test3_SuccessfulPaymentConfirmationUpdatesStatusesAndTriggersTicketGeneration() {
         Booking booking = createBooking("CB-8F4K2M", BookingStatus.PENDING, new BigDecimal("3200.00"));
         Payment payment = createPayment(15L, booking, PaymentStatus.PROCESSING, new BigDecimal("3200.00"));
 
@@ -128,10 +132,11 @@ class PaymentServiceTest {
         assertEquals(BookingStatus.CONFIRMED, booking.getStatus());
         verify(paymentRepository).save(payment);
         verify(bookingRepository).save(booking);
+        verify(ticketService).generateTicketsForBooking(booking);
     }
 
     @Test
-    void test4_FailedPaymentConfirmationLeavesBookingPending() {
+    void test4_FailedPaymentConfirmationLeavesBookingPendingAndDoesNotGenerateTickets() {
         Booking booking = createBooking("CB-8F4K2M", BookingStatus.PENDING, new BigDecimal("3200.00"));
         Payment payment = createPayment(15L, booking, PaymentStatus.PROCESSING, new BigDecimal("3200.00"));
 
@@ -144,6 +149,7 @@ class PaymentServiceTest {
         assertEquals(PaymentStatus.FAILED, response.status());
         assertEquals(BookingStatus.PENDING, booking.getStatus());
         verify(paymentRepository).save(payment);
+        verify(ticketService, never()).generateTicketsForBooking(any());
     }
 
     @Test

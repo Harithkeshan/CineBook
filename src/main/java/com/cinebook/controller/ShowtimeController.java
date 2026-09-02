@@ -1,5 +1,6 @@
 package com.cinebook.controller;
 
+import com.cinebook.dto.CancelShowtimeResponse;
 import com.cinebook.dto.HoldSeatsRequest;
 import com.cinebook.dto.SeatHoldResponse;
 import com.cinebook.dto.ShowtimeResponse;
@@ -58,6 +59,12 @@ public class ShowtimeController {
             @RequestBody HoldSeatsRequest request
     ) {
         SeatHoldResponse response = showtimeSeatService.holdSeats(showtimeId, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/showtimes/{showtimeId}/cancel")
+    public ResponseEntity<CancelShowtimeResponse> cancelShowtimeByCinema(@PathVariable Long showtimeId) {
+        CancelShowtimeResponse response = showtimeService.cancelShowtimeByCinema(showtimeId);
         return ResponseEntity.ok(response);
     }
 

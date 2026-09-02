@@ -15,11 +15,7 @@ import com.cinebook.entity.enums.ShowtimeStatus;
 import com.cinebook.entity.enums.TicketType;
 import com.cinebook.exception.ResourceNotFoundException;
 import com.cinebook.exception.SeatUnavailableException;
-import com.cinebook.repository.BookingRepository;
-import com.cinebook.repository.BookingSeatRepository;
-import com.cinebook.repository.PricingRuleRepository;
-import com.cinebook.repository.ShowtimeRepository;
-import com.cinebook.repository.ShowtimeSeatRepository;
+import com.cinebook.repository.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -54,6 +50,18 @@ class BookingServiceTest {
     @Mock
     private PricingRuleRepository pricingRuleRepository;
 
+    @Mock
+    private com.cinebook.repository.TicketRepository ticketRepository;
+
+    @Mock
+    private PaymentRepository paymentRepository;
+
+    @Mock
+    private RefundService refundService;
+
+    @Mock
+    private UserRepository userRepository;
+
     private BookingService bookingService;
 
     @BeforeEach
@@ -63,7 +71,11 @@ class BookingServiceTest {
                 bookingSeatRepository,
                 showtimeRepository,
                 showtimeSeatRepository,
-                pricingRuleRepository
+                pricingRuleRepository,
+                ticketRepository,
+                paymentRepository,
+                refundService,
+                userRepository
         );
     }
 
